@@ -75,6 +75,61 @@ def extract_frames_tennis(task: Task):
                  task.min_frame), f"frames mismatch, expected {e}, got {i}, {task.video_name}"
 
 
+def extract_frames_fs_comp(task: Task):
+    # capture video
+    vc = cv2.VideoCapture(str(task.video_path))
+
+    # get video properties
+    fps = vc.get(cv2.CAP_PROP_FPS)
+    exp_num_frames = int(vc.get(cv2.CAP_PROP_FRAME_COUNT))
+    w = int(vc.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(vc.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # resize the frame if necessary
+    if task.max_height < h:
+        oh = task.max_height
+        ow = int(w / h * task.max_height)
+    else:
+        oh, ow = h, w
+
+    # skip if the clip is already extracted
+    file_count = sum(1 for _ in task.frame_out_path.glob("*.jpg"))
+    if file_count == task.target_num_frames:
+        # this breaks tqdm bar
+        # print(f"Already extracted, skip: {task.video_name}")
+        return
+
+    # check the frames
+    assert np.isclose(fps, task.target_fps, atol=0.01), f"target FPS {
+        task.target_fps} does not match source FPS {fps}, {task.video_name}"
+
+    # if dry run
+    if task.frame_out_path is not None:
+        task.frame_out_path.mkdir(exist_ok=True, parents=True)
+
+    vc.set(cv2.CAP_PROP_POS_FRAMES, task.min_frame)
+    i = 0
+    while True:
+        ret, frame = vc.read()
+        if not ret:
+            break
+
+        if frame.shape[0] != oh:
+            frame = cv2.resize(frame, (ow, oh))
+
+        if task.frame_out_path is not None:
+            frame_path = task.frame_out_path / f"{i:06d}.jpg"
+            cv2.imwrite(str(frame_path), frame)
+
+        i += 1
+        if task.min_frame + i == task.max_frame:
+            break
+
+    vc.release()
+    assert i == (e := task.max_frame -
+                 task.min_frame), f"frames mismatch, expected {e}, got {i}, {task.video_name}"
+
+
 def extract_frames_finegym(task: Task):
     # capture video
     vc = cv2.VideoCapture(str(task.video_path))
@@ -111,10 +166,10 @@ def extract_frames_finegym(task: Task):
 
     # check the frames
     if np.isclose(fps, task.target_fps, atol=0.01):
-        # donwloaded fps = 30, target_fps = 30
+        # downloaded fps = 30, target_fps = 30
         downsample = False
     else:
-        # donwloaded fps = 30, target_fps = 29.49
+        # downloaded fps = 30, target_fps = 29.49
         downsample = True
         num_frame = task.max_frame - task.min_frame
         skip_interval = num_frame // (num_frame - task.target_num_frames)

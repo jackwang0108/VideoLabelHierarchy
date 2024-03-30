@@ -11,7 +11,7 @@ from tqdm import tqdm
 # My Library
 from .utils.color import green
 from .utils.tasks import get_tasks
-from .utils.extract import extract_frames_tennis, extract_frames_finegym
+from .utils.extract import extract_frames_tennis, extract_frames_finegym, extract_frames_fs_comp
 
 
 def get_args() -> argparse.Namespace:
@@ -89,6 +89,10 @@ def main(args: argparse.Namespace):
         extract_func = extract_frames_tennis
     elif dataset == "FineGym":
         extract_func = extract_frames_finegym
+    elif dataset == "fs_comp":
+        extract_func = extract_frames_fs_comp
+    else:
+        raise NotImplementedError
 
     with Pool(num_proc) as pool:
         for _ in tqdm(

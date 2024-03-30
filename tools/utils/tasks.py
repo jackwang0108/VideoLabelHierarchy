@@ -216,6 +216,60 @@ def get_tennis_tasks(indir: Path, outdir: Path, max_height: int):
     return tasks
 
 
+def get_fs_comp_tasks(indir: Path, outdir: Path, max_height: int) -> list[Task]:
+
+    annotation_dir = Path(__file__).parent.parent / "fs_comp"
+
+    csv = parse_csv(
+        annotation_dir / "valid-videos.csv", fields=("name", "yt_id")
+    ).set_index("name")
+
+    annotations: list[Annotation] = get_annotations(annotation_dir)
+
+    tasks: list[Task] = []
+    for ann in annotations:
+        # get video name
+        video_name = ann["video"]
+
+        # get frame output path
+        frame_out_path = outdir / video_name
+
+        # get yt_id, start_frame, end_frame
+        video_name, _, start_frame, end_frame = video_name.rsplit("_", 3)
+        yt_id = get_yt_id_by_name(csv, video_name)
+
+        # get video file path
+        video_path = get_video_path(indir, yt_id)
+
+        # get frames
+        num_frames = ann["num_frames"]
+        start_frame, end_frame = int(start_frame), int(end_frame)
+
+        if (got_frames := end_frame - start_frame) != num_frames:
+            raise ValueError(
+                f"Frames mismatch, expected {num_frames}, got {got_frames}"
+            )
+
+        # get fps
+        fps = ann["fps"]
+
+        t = Task(
+            video_name=video_name,
+            video_path=video_path,
+            frame_out_path=frame_out_path,
+            min_frame=start_frame,
+            max_frame=end_frame,
+            target_fps=fps,
+            target_num_frames=num_frames,
+            width=ann["width"],
+            height=ann["height"],
+            max_height=max_height,
+        )
+
+        tasks.append(t)
+    return tasks
+
+
 def get_tasks(dataset: str, indir: Path, outdir: Path, max_height: int) -> list[Task]:
     """
     Returns a list of Task for further extracting based on the specified dataset.
@@ -236,6 +290,8 @@ def get_tasks(dataset: str, indir: Path, outdir: Path, max_height: int) -> list[
         return get_tennis_tasks(indir, outdir, max_height)
     elif dataset == "FineGym":
         return get_FineGym_tasks(indir, outdir, max_height)
+    elif dataset == "fs_comp":
+        return get_fs_comp_tasks(indir, outdir, max_height)
     else:
         raise NotImplementedError
 
