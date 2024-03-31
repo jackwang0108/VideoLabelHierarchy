@@ -21,6 +21,12 @@ To cut videos into clip and extract frames from the clip, run the following comm
 python -m tools.make_datasets [-h] -d {tennis,FineDiving,FineGym,fs_comp,fs_perf} -i path/to/downloaded/videos [-o path/to/extracted/frames] [-m maximum_height_of the extracted frame] [-n number_of_extracting_frames]
 ```
 
+Current support datasets:
+- tennis
+- FineGym
+- FineDiving
+- fs_comp (FineSkating)
+
 ## 3. Notice
 
 Some of the videos contained in the datasets have been invalid, so we removed the invalid videos. Invalid videos are shown in
