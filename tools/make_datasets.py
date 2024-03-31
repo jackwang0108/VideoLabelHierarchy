@@ -91,11 +91,12 @@ def main(args: argparse.Namespace):
         extract_func = extract_frames_tennis
     elif dataset == "FineGym":
         extract_func = extract_frames_finegym
-    elif dataset == "fs_comp":
+    elif dataset in ["fs_comp", "fs_perf"]:
         extract_func = extract_frames_fs_comp
     elif dataset == "FineDiving":
         copy_func = copy_frames_finediving
     else:
+        print(f"extract_frames not implemented for {dataset}")
         raise NotImplementedError
 
     if dataset != "FineDiving":

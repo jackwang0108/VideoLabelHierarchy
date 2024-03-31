@@ -290,7 +290,7 @@ def get_tasks(dataset: str, indir: Path, outdir: Path, max_height: int) -> list[
         return get_tennis_tasks(indir, outdir, max_height)
     elif dataset == "FineGym":
         return get_FineGym_tasks(indir, outdir, max_height)
-    elif dataset == "fs_comp":
+    elif dataset in {"fs_comp", "fs_perf"}:
         return get_fs_comp_tasks(indir, outdir, max_height)
     elif dataset == "FineDiving":
         return []
