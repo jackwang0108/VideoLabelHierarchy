@@ -5,6 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python 调试程序: frame",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "datasets.frame"
+        },
+        {
             "name": "Python 调试程序: 当前文件",
             "type": "debugpy",
             "request": "launch",
@@ -18,11 +24,11 @@
             "module": "download.make_datasets",
             "args": [
                 "-d",
-                "FineGym",
+                "fs_comp",
                 "-i",
-                "~/projects/video-datasets/FineGym",
+                "~/projects/video-datasets/fs_perf",
                 "-o",
-                "~/projects/video-datasets/FineGym-frames"
+                "~/projects/video-datasets/fs_perf-frames"
             ]
         },
         {
