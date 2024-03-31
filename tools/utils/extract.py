@@ -1,5 +1,7 @@
 # Standard Library
+import shutil
 from pathlib import Path
+from typing import Optional
 
 # Third-Party Library
 import av
@@ -199,6 +201,38 @@ def extract_frames_finegym(task: Task):
     vc.release()
     assert i == (e := task.max_frame -
                  task.min_frame), f"frames mismatch, expected {e}, got {i}, {task.video_name}"
+
+
+def copy_frames_finediving(indir: Path, outdir: Path, max_height: Optional[int] = None):
+    if max_height is not None:
+        print(f"Resizing frames to {max_height} px height")
+
+    def copy_all_frames(frame_indir: Path, frame_outdir: Path) -> int:
+        frame_files = sorted(list(frame_indir.iterdir()))
+        assert all(x.suffix == ".jpg" for x in frame_files)
+
+        for i, frame_inpath in enumerate(frame_files):
+            frame_outdir.mkdir(exist_ok=True, parents=True)
+
+            frame_outpath = frame_outdir / f"{i:06d}.jpg"
+
+            if max_height is None:
+                shutil.copyfile(frame_inpath, frame_outpath)
+            else:
+                im = cv2.imread(str(frame_inpath))
+                h, w, _ = im.shape
+                im = cv2.resize(im, (int(max_height * w / h), max_height))
+                cv2.imwrite(str(frame_outpath), im)
+        return len(frame_files)
+
+    for parent_dir in indir.iterdir():
+        for child_dir in parent_dir.iterdir():
+            frame_indir = child_dir
+            frame_outdir = outdir / f"{parent_dir.stem}__{child_dir.stem}"
+            num_copied_frames = copy_all_frames(
+                frame_indir, frame_outdir)
+            print(f"Copied {num_copied_frames}: {
+                  frame_indir} -- {frame_outdir}")
 
 
 if __name__ == "__main__":

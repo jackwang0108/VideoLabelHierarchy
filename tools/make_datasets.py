@@ -11,7 +11,9 @@ from tqdm import tqdm
 # My Library
 from .utils.color import green
 from .utils.tasks import get_tasks
-from .utils.extract import extract_frames_tennis, extract_frames_finegym, extract_frames_fs_comp
+from .utils.extract import extract_frames_tennis, extract_frames_finegym, extract_frames_fs_comp, copy_frames_finediving
+
+# TODO: 增加SoccerNet和SoccerNet-ball的支持
 
 
 def get_args() -> argparse.Namespace:
@@ -31,7 +33,7 @@ def get_args() -> argparse.Namespace:
         "--indir",
         type=str,
         required=True,
-        help="Path to the downloaded videos",
+        help="Path to the downloaded videos/frames",
     )
     parser.add_argument(
         "-o",
@@ -91,16 +93,21 @@ def main(args: argparse.Namespace):
         extract_func = extract_frames_finegym
     elif dataset == "fs_comp":
         extract_func = extract_frames_fs_comp
+    elif dataset == "FineDiving":
+        copy_func = copy_frames_finediving
     else:
         raise NotImplementedError
 
-    with Pool(num_proc) as pool:
-        for _ in tqdm(
-            pool.imap_unordered(extract_func, tasks),
-            total=len(tasks),
-            desc="Dry run" if is_dry_run else "Extracting",
-        ):
-            pass
+    if dataset != "FineDiving":
+        with Pool(num_proc) as pool:
+            for _ in tqdm(
+                pool.imap_unordered(extract_func, tasks),
+                total=len(tasks),
+                desc="Dry run" if is_dry_run else "Extracting",
+            ):
+                pass
+    else:
+        copy_func(indir, outdir, max_height)
 
     print(f"Done, extracted frames are saved to {green(outdir)}")
 

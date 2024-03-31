@@ -11,6 +11,8 @@ from .utils.download import download
 from .utils.csv_utils import parse_csv
 from .utils.proxy import valid_proxy, get_proxy_handler
 
+# TODO: 增加SoccerNet和SoccerNet-ball的支持
+
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -59,6 +61,9 @@ def main(args: argparse.Namespace):
         ds := ["tennis", "FineDiving", "FineGym", "fs_comp", "fs_perf"]
     ), f"args.dataset should be in {green(ds)}, got: {red(args.dataset)}"
 
+    if args.dataset == "FineDiving":
+        print("Please refer to the original author to download the FineDiving Dataset: https://github.com/xujinglin/FineDiving?tab=readme-ov-file#download")
+
     ip: str = args.ip
     ffmpeg: str = args.ffmpeg
     port: int = int(args.port)
@@ -71,10 +76,11 @@ def main(args: argparse.Namespace):
     )
 
     # save dir
-    outdir: Path = Path(args.outdir) if args.outdir != "None" else Path(f"./{dataset}")
+    outdir: Path = Path(
+        args.outdir) if args.outdir != "None" else Path(f"./{dataset}")
     if not outdir.exists():
         outdir.mkdir(parents=True)
-    print(f"save vidoes to {green(outdir)}")
+    print(f"save videos to {green(outdir)}")
 
     # ffmpeg
     assert shutil.which(ffmpeg) is not None or Path(ffmpeg).exists(), red(
@@ -88,7 +94,8 @@ def main(args: argparse.Namespace):
         print(f"proxy provided: {green(ip)}:{green(port)}")
         proxy_status = valid_proxy(port=port, ip=ip)
         if not proxy_status:
-            print(red(f"Proxy test {red('failed', True)} for https://{ip}:{port}"))
+            print(
+                red(f"Proxy test {red('failed', True)} for https://{ip}:{port}"))
             return False
         print(f"Proxy test {green('success')} for https://{ip}:{port}")
     else:
@@ -106,7 +113,8 @@ def main(args: argparse.Namespace):
     for t in tasks:
         yt_id, fps, height, width = t
         async_result.append(
-            pool.apply_async(download, (outdir, ip, port, yt_id, fps, height, width))
+            pool.apply_async(download, (outdir, ip, port,
+                             yt_id, fps, height, width))
         )
     pool.close()
     pool.join()
@@ -118,9 +126,11 @@ def main(args: argparse.Namespace):
             success, yt_id = r
             success = success == 0
             print(
-                f"youtube ID: {yt_id}, {green('success') if success else red('fail', True)}"
+                f"youtube ID: {yt_id}, {
+                    green('success') if success else red('fail', True)}"
             )
-            f.write(f"youtube ID: {yt_id}, {'success' if success else 'fail'}\n")
+            f.write(f"youtube ID: {yt_id}, {
+                    'success' if success else 'fail'}\n")
 
 
 if __name__ == "__main__":

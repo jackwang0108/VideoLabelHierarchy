@@ -292,6 +292,8 @@ def get_tasks(dataset: str, indir: Path, outdir: Path, max_height: int) -> list[
         return get_FineGym_tasks(indir, outdir, max_height)
     elif dataset == "fs_comp":
         return get_fs_comp_tasks(indir, outdir, max_height)
+    elif dataset == "FineDiving":
+        return []
     else:
         raise NotImplementedError
 
