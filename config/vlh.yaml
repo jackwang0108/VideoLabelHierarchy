@@ -1,6 +1,6 @@
 variables:
   # You should modify the path to your setting
-  basedir: /data/wsf/projects/VideosLabelHierarchy
+  basedir: /data/wsf/projects/VideoLabelHierarchy
 
 datasets:
   tennis:
