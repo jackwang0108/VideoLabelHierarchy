@@ -125,7 +125,6 @@ class FrameReader:
                 # if a frame is missing, then pad at the end of the tensor
                 # print(warn(f"Missing frame {yellow(self.get_image_name(frame_idx))} for video {
                 #       yellow(video_name)}, at clip {yellow(frame_path.parent.stem)}, skip this frame..."))
-                print(f"read frame {frame_idx} failed")
                 n_pad_end += 1
 
         if all_frames:
