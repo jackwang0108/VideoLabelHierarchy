@@ -12,6 +12,7 @@ Run the following command to download the videos from the youtube:
 ```bash
 python -m tools.download.py [-h] -d {tennis,FineDiving,FineGym,fs_comp,fs_perf} [-f path/to/ffmpeg/executable] [-o path/to/save/the/videos] [-p port_of_proxy] [-i ip_of_proxy] [-n number_of_downloading_threads]
 ```
+Note: if you are using VsCode as I am, you'd better to save the videos outside of the root folder of this working space folder, as well as extracted frames output dir. This is because VsCode Pylance language server cannot handel too many files if you download and extract them in the working space folder. As a result, the typing, highlighting and other things will be disabled.
 
 ## 2. Create the Datasets
 
