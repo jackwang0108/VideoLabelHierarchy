@@ -21,6 +21,10 @@ To cut videos into clip and extract frames from the clip, run the following comm
 python -m tools.make_datasets [-h] -d {tennis,FineDiving,FineGym,fs_comp,fs_perf} -i path/to/downloaded/videos [-o path/to/extracted/frames] [-m maximum_height_of the extracted frame] [-n number_of_extracting_frames]
 ```
 
+Note: if you meet the error message: `[h264 @ 0xXXXXXXX] mmco: unref short failure`, this is the error thrown by `OpenCV`. This is because `OpenCV` doesn't handle seeking in videos to jump to a specific frame very well. I guess this is because `OpenCV` handles fps as a `float`, but ffmpeg handles it as a `Fraction`. So the conversion from `Fraction` to `float` will leads to inevitable loss on precision.
+
+However, in reality, the `mmco` error will not have any impact.
+
 Current support datasets:
 - tennis
 - FineGym
