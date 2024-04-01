@@ -163,7 +163,8 @@ def merge_cmd_config(args: argparse.Namespace, yaml_config: ConfigNode) -> Confi
 
             # TODO: add tuple-list and list-tuple conversion support
             if isinstance(value, (list, tuple)):
-                raise NotImplementedError, f"Conversion form {type(value)} is not implemented yet"
+                raise NotImplementedError
+            # f"Conversion form {type(value)} is not implemented yet"
 
             config[namespace][key] = value
 
