@@ -1,0 +1,37 @@
+variables:
+  # You should modify the path to your setting
+  basedir: /data/wsf/projects/VideosLabelHierarchy
+
+datasets:
+  tennis:
+    modality: rgb
+    class_file: ${basedir}/tools/tennis/class.txt
+    # You should modify the path to your setting
+    clip_dir: /data/wsf/projects/video-datasets/tennis-frames
+  
+  fs_perf:
+    modality: rgb
+    class_file: ${basedir}/tools/fs_perf/class.txt
+    # You should modify the path to your setting
+    clip_dir: /data/wsf/projects/video-datasets/fs_perf-frames
+
+  fs_comp:
+    modality: rgb
+    class_file: ${basedir}/tools/fs_comp/class.txt
+    # You should modify the path to your setting
+    clip_dir: /data/wsf/projects/video-datasets/fs_comp-frames
+
+  FineDiving:
+    modality: rgb
+    class_file: ${basedir}/tools/FineDiving/class.txt
+    # You should modify the path to your setting
+    clip_dir: /data/wsf/projects/video-datasets/FineDiving-frames
+
+  FineGym:
+    modality: rgb
+    class_file: ${basedir}/tools/FineGym/class.txt
+    # You should modify the path to your setting
+    clip_dir: /data/wsf/projects/video-datasets/FineGym-frames
+
+
+
