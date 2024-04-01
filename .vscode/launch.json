@@ -5,10 +5,16 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python 调试程序: frame",
+            "name": "Python 调试程序: config",
             "type": "debugpy",
             "request": "launch",
-            "module": "datasets.frame"
+            "module": "utils.config"
+        },
+        {
+            "name": "Python 调试程序: image_datasets",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "datasets.image_datasets"
         },
         {
             "name": "Python 调试程序: 当前文件",

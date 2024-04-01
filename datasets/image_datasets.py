@@ -196,9 +196,9 @@ class ActionSpotDataset(data.Dataset):
 if __name__ == "__main__":
     import torch.utils.data as data
 
-    from utils.config import parse_config_yaml
+    from utils.config import parse_yaml_config
 
-    config = parse_config_yaml(
+    config = parse_yaml_config(
         Path(__file__).parent.joinpath("../config/vlh.yaml"))
 
     base_dir = Path(config["variables"]["basedir"])

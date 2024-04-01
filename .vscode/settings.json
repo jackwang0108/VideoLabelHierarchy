@@ -1,6 +1,7 @@
 {
     "cSpell.words": [
         "anns",
+        "argparser",
         "cpus",
         "djokovic",
         "federer",
@@ -8,9 +9,11 @@
         "finegym",
         "indir",
         "inpath",
+        "mmco",
         "outpath",
         "Seedable",
         "Synchronised",
+        "unref",
         "usopen",
         "vxdhls"
     ]

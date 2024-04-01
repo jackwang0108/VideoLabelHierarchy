@@ -34,4 +34,10 @@ datasets:
     clip_dir: /data/wsf/projects/video-datasets/FineGym-frames
 
 
+model:
+  backbone:
+  temporal: 
 
+train:
+  dataset:
+  lr: 1e-5
