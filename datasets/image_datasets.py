@@ -1,4 +1,5 @@
 # Standard Library
+import copy
 import random
 from pathlib import Path
 from typing import Optional
@@ -25,10 +26,11 @@ def get_classes(class_txt: Path) -> dict[str, int]:
 
 
 class ActionSpotDataset(data.Dataset):
+    """ dataset for training, validating and testing """
 
     def __init__(
         self,
-        # dict of class names to idx
+        # Dict of class names to idx
         classes: dict[str, int],
         # Path to the label json
         label_file: Path,
@@ -193,6 +195,118 @@ class ActionSpotDataset(data.Dataset):
         return self.dataset_len
 
 
+class ActionSpotmAPDataset(data.Dataset):
+    """ dataset for calculating mAP """
+
+    def __init__(
+        self,
+        # Dict of class names to idx
+        classes: dict[str, int],
+        # Path to the label json
+        label_file: Path,
+        # Path to the frames
+        clip_dir: Path,
+        # Modality of the frames, [rgb, bw, flow]
+        modality: str,
+        # Length of the clip, i.e. frame num
+        clip_len: int,
+        # overlap of each clip fragment
+        overlap_len: int = 0,
+        # Dimension to crop the clip
+        crop_dim: Optional[int] = None,
+        # Stride to sample the clip, >1 to downsample the video
+        frame_sample_stride: int = 1,
+        # Number of the frames to pad before/after the clip
+        n_pad_frames: int = 5,
+        # If multi-crop on images
+        multi_crop: bool = False,
+        # If horizontally flip the clip
+        horizontal_flip: bool = False,
+        # TODO: add doc
+        skip_partial_end: bool = True
+    ) -> None:
+        super().__init__()
+
+        # save the parameters
+        self.label_file: Path = label_file
+        self.clip_labels: list[Annotation] = load_json(label_file)
+        self.class_dict: dict[str, int] = classes
+        self.clip_indexes: dict[str, int] = {
+            x["video"]: i for i, x in enumerate(self.clip_labels)}
+        self.clip_len: int = clip_len
+
+        # parameters that need verification
+        assert frame_sample_stride > 0
+        self.frame_sample_stride: int = frame_sample_stride
+
+        # augmentations used in testing
+        self.horizontal_flip = horizontal_flip
+        self.multi_crop = multi_crop
+
+        # Frame Reader
+        self.frame_reader = get_frame_reader(
+            clip_dir=clip_dir, is_eval=True, crop_dim=crop_dim, modality=modality, same_crop_transform=True, multi_crop=multi_crop
+        )
+
+        # split clips into smaller clips for testing
+        self.clips: list[dict[str, str | int]] = []
+        for ann in self.clip_labels:
+            has_clip = False
+            for i in range(
+                -n_pad_frames * frame_sample_stride,
+                max(0, ann["num_frames"] - overlap_len *
+                    frame_sample_stride * int(skip_partial_end)),
+                (clip_len - overlap_len) * frame_sample_stride
+            ):
+                has_clip = True
+                self.clips.append(
+                    {"clip_name": ann["video"], "start_frame": i})
+            assert has_clip, i
+
+    def __len__(self) -> int:
+        return len(self.clips)
+
+    def __getitem__(self, index: int) -> dict[str, str | int | torch.FloatTensor]:
+        """ returned frame is [B, T, C, H, W] if use multi-crop or horizontal flip, else [T, C, H, W]  """
+        clip_name, start_frame = self.clips[index].values()
+
+        # load_frames
+        frames = self.frame_reader.load_frames(
+            clip_name, start_frame, start_frame + self.clip_len * self.frame_sample_stride,
+            pad_end_frame=True,
+            frame_sample_stride=self.frame_sample_stride
+        )
+
+        if self.horizontal_flip:
+            frames = torch.stack([frames, frames.flip(-1)], dim=0)
+
+        return {"clip_name": clip_name, "start_frame": start_frame // self.frame_sample_stride, "frame": frames}
+
+    @property
+    def augmentation(self) -> bool:
+        """ if dataset uses augmentation """
+        return self.horizontal_flip or self.multi_crop
+
+    @property
+    def videos(self) -> list[tuple[str, int, float]]:
+        return sorted([(v["video"], v["num_frames"] // self.frame_sample_stride, v["fps"] / self.frame_sample_stride) for v in self.clip_labels])
+
+    @property
+    def labels(self) -> list[Annotation]:
+        if self.frame_sample_stride == 1:
+            return self.clip_labels
+
+        labels = []
+        for ann in self.clip_labels:
+            ann_copy = copy.deepcopy(ann)
+            ann_copy["fps"] /= self.frame_sample_stride
+            ann_copy["num_frames"] //= self.frame_sample_stride
+            for event in ann_copy["events"]:
+                event["frame"] //= self.frame_sample_stride
+            labels.append(ann_copy)
+        return labels
+
+
 if __name__ == "__main__":
     import torch.utils.data as data
 
@@ -210,61 +324,52 @@ if __name__ == "__main__":
 
         classes = get_classes(class_file)
 
-        train_dataset = ActionSpotDataset(
-            classes=classes,
-            label_file=base_dir.joinpath(f"tools/{dataset_name}/train.json"),
-            clip_dir=clip_dir,
-            modality="rgb",
-            clip_len=100,
-            dataset_len=50000,
-            is_eval=False
-        )
+        for split, clip_len, dataset_len, is_eval, same_crop_transform in [
+            ("train", 100, 50000, False, False),
+            ("val", 150, 50000 // 4, True, True),
+            ("test", 200, 50000 // 4, True, True),
+        ]:
+            dataset = ActionSpotDataset(
+                classes=classes,
+                label_file=base_dir.joinpath(
+                    f"tools/{dataset_name}/{split}.json"),
+                clip_dir=clip_dir,
+                modality="rgb",
+                clip_len=clip_len,
+                dataset_len=dataset_len,
+                is_eval=is_eval,
+                same_crop_transform=same_crop_transform,
+                crop_dim=100 if split == "test" else 200
+            )
 
-        val_dataset = ActionSpotDataset(
-            classes=classes,
-            label_file=base_dir.joinpath(f"tools/{dataset_name}/val.json"),
-            clip_dir=clip_dir,
-            modality="rgb",
-            clip_len=120,
-            dataset_len=50000 // 4,
-            is_eval=True,
-            same_crop_transform=True,
-        )
+            loader = data.DataLoader(dataset, batch_size=4)
 
-        test_dataset = ActionSpotDataset(
-            classes=classes,
-            label_file=base_dir.joinpath(f"tools/{dataset_name}/test.json"),
-            clip_dir=clip_dir,
-            modality="rgb",
-            clip_len=130,
-            dataset_len=50000 // 4,
-            is_eval=True,
-            same_crop_transform=True,
-        )
+            print(f"test {dataset_name}, {split}")
 
-        train_loader = data.DataLoader(train_dataset)
-        val_loader = data.DataLoader(val_dataset)
-        test_loader = data.DataLoader(test_dataset)
+            for i in loader:
+                print(i["contains_event"])
+                print(i["frame"].shape, i["frame"].size(1) == 100)
+                print(i["label"].shape, i["label"].size(1) == 100)
+                break
 
-        print(f"test {dataset_name}")
+            if split == "train":
+                continue
 
-        print("test train datasets")
-        for i in train_loader:
-            print(i["contains_event"])
-            print(i["frame"].shape, i["frame"].size(1) == 100)
-            print(i["label"].shape, i["label"].size(1) == 100)
-            break
+            map_dataset = ActionSpotmAPDataset(
+                classes=classes,
+                label_file=base_dir.joinpath(
+                    f"tools/{dataset_name}/{split}.json"),
+                clip_len=clip_len,
+                clip_dir=clip_dir,
+                modality="rgb",
+                overlap_len=10,
+            )
 
-        print("test val datasets")
-        for i in val_loader:
-            print(i["contains_event"])
-            print(i["frame"].shape, i["frame"].size(1) == 120)
-            print(i["label"].shape, i["label"].size(1) == 120)
-            break
+            map_loader = data.DataLoader(map_dataset, batch_size=4)
 
-        print("test test datasets")
-        for i in test_loader:
-            print(i["contains_event"])
-            print(i["frame"].shape, i["frame"].size(1) == 130)
-            print(i["label"].shape, i["label"].size(1) == 130)
-            break
+            print(f"test {dataset_name}, {split}, mAPDataset")
+            for i in map_loader:
+                print(i["clip_name"])
+                print(i["start_frame"])
+                print(i["frame"].shape)
+                break
