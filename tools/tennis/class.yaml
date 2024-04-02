@@ -1,0 +1,25 @@
+meta:
+  level: 2
+  transition: 1
+
+classes:
+  level1:
+    - far_court_bounce
+    - far_court_swing
+    - far_court_serve
+    - near_court_bounce
+    - near_court_swing
+    - near_court_serve
+
+  level2:
+    - far
+    - near
+
+transition:
+  transition1:
+    far_court_bounce: far
+    far_court_swing: far
+    far_court_serve: far
+    near_court_bounce: near
+    near_court_swing: near
+    near_court_serve: near

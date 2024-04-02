@@ -1,0 +1,21 @@
+meta:
+  level: 2
+  transition: 1
+
+classes:
+  level1:
+    - jump_landing
+    - jump_takeoff
+    - spin_landing
+    - spin_takeoff
+
+  level2:
+    - jump
+    - spin
+
+transition:
+  transition1:
+    jump_landing: jump
+    jump_takeoff: jump
+    spin_landing: spin
+    spin_takeoff: spin

@@ -14,15 +14,36 @@ import torch.utils.data as data
 # My Library
 from .frame import get_frame_reader
 
-from utils.io import load_json
 from utils.color import error, red
-from utils.annotation import Annotation
+from utils.io import load_json, load_yaml
+from utils.annotation import Annotation, HierarchalClass
 
 
 def get_classes(class_txt: Path) -> dict[str, int]:
     with class_txt.open(mode="r") as f:
         classes: list[str] = f.readlines()
-    return {c.strip(): i for i, c in enumerate(classes)}
+    # zero for background
+    return {c.strip(): i + 1 for i, c in enumerate(classes)}
+
+
+# TODO: E2E-Spot给的FineDiving的label有问题, 只给了细分的动作, 没有207c这样的动作, 所以后面得考虑一下怎么做
+def get_hierarchal_classes(class_yaml: Path) -> HierarchalClass:
+    content = load_yaml(class_yaml)
+
+    num_level = content["meta"]["level"]
+    num_trans = content["meta"]["transition"]
+
+    level_dict = {}
+    for level_idx in range(num_level):
+        level_class = content["classes"][f"level{level_idx + 1}"]
+        level_dict[level_idx] = {
+            cls_name: i + 1 for i, cls_name in enumerate(level_class)}
+
+    trans_dict = {
+        trans_idx: content["transition"][f"transition{trans_idx + 1}"]
+        for trans_idx in range(num_trans)
+    }
+    return {"num_level": num_level, "num_trans": num_trans, "level_dict": level_dict, "trans_dict": trans_dict}
 
 
 class ActionSpotDataset(data.Dataset):
@@ -30,8 +51,8 @@ class ActionSpotDataset(data.Dataset):
 
     def __init__(
         self,
-        # Dict of class names to idx
-        classes: dict[str, int],
+        # Dict of hierarchal classes
+        hierarchal_classes: HierarchalClass,
         # Path to the label json
         label_file: Path,
         # Path to the frames
@@ -64,7 +85,7 @@ class ActionSpotDataset(data.Dataset):
         self.label_file: Path = label_file
         self.clip_labels: list[Annotation] = load_json(
             label_file)
-        self.classes_dict: dict[str, int] = classes
+        self.hierarchal_classes: HierarchalClass = hierarchal_classes
         self.clip_indexes: dict[str, int] = {
             x["video"]: i for i, x in enumerate(self.clip_labels)}
         self.is_eval = is_eval
@@ -163,18 +184,35 @@ class ActionSpotDataset(data.Dataset):
     def get_example(self) -> dict[str, torch.FloatTensor | np.ndarray | int]:
         clip_label, start_frame = self.get_sample()
 
-        # make labels
-        labels = np.zeros(self.clip_len, np.int64)
+        # build hierarchal labels
+        labels = {level_idx: np.zeros(self.clip_len) for level_idx in range(
+            self.hierarchal_classes["num_level"])}
+
         for event in clip_label["events"]:
             event_frame = event["frame"]
 
             # calculate the index of the frame
-            label_index = (
+            label_idx = (
                 event_frame - start_frame) // self.frame_sample_stride
-            if (label_index >= -self.dilate_len and label_index < self.clip_len + self.dilate_len):
-                label = self.classes_dict[event['label']]
-                for i in range(max(0, label_index - self.dilate_len), min(self.clip_len, label_index + self.dilate_len + 1)):
-                    labels[i] = label
+            if (label_idx >= -self.dilate_len and label_idx < self.clip_len + self.dilate_len):
+
+                # modify the corresponding frame labels
+                for i in range(max(0, label_idx - self.dilate_len), min(self.clip_len, label_idx + self.dilate_len + 1)):
+
+                    # label of the first level
+                    level0_label = event["label"]
+
+                    # build the label for the first level
+                    labels[0][i] = self.hierarchal_classes["level_dict"][0][level0_label]
+
+                    # build the label for the rest level
+                    last_level_label: str = level0_label
+                    for level_idx in range(1, self.hierarchal_classes["num_level"]):
+                        level_label: str = ""
+                        # get the label of current level
+                        for j in range(level_idx):
+                            level_label = self.hierarchal_classes["trans_dict"][j][last_level_label]
+                        labels[level_idx][i] = self.hierarchal_classes["level_dict"][level_idx][level_label]
 
         # load frames
         frames = self.frame_reader.load_frames(
@@ -183,7 +221,7 @@ class ActionSpotDataset(data.Dataset):
             pad_end_frame=True, frame_sample_stride=self.frame_sample_stride, random_sample=not self.is_eval
         )
 
-        return {"frame": frames, "label": labels, "contains_event": int(labels.sum() > 0)}
+        return {"frame": frames, "level": self.hierarchal_classes["num_level"], "label": labels, "contains_event": int(labels[0].sum() > 0)}
 
     def __getitem__(self, unused):
         example = self.get_example()
@@ -200,8 +238,6 @@ class ActionSpotmAPDataset(data.Dataset):
 
     def __init__(
         self,
-        # Dict of class names to idx
-        classes: dict[str, int],
         # Path to the label json
         label_file: Path,
         # Path to the frames
@@ -230,7 +266,6 @@ class ActionSpotmAPDataset(data.Dataset):
         # save the parameters
         self.label_file: Path = label_file
         self.clip_labels: list[Annotation] = load_json(label_file)
-        self.class_dict: dict[str, int] = classes
         self.clip_indexes: dict[str, int] = {
             x["video"]: i for i, x in enumerate(self.clip_labels)}
         self.clip_len: int = clip_len
@@ -308,6 +343,11 @@ class ActionSpotmAPDataset(data.Dataset):
 
 
 if __name__ == "__main__":
+    # import pprint
+
+    # pprint.pprint(get_hierarchal_classes(
+    #     Path(__file__).resolve().parent / "../tools/tennis/class.yaml"))
+
     import torch.utils.data as data
 
     from utils.config import parse_yaml_config
@@ -322,7 +362,7 @@ if __name__ == "__main__":
         clip_dir = Path(dataset_config["clip_dir"])
         class_file = Path(dataset_config["class_file"])
 
-        classes = get_classes(class_file)
+        hierarchal_classes = get_hierarchal_classes(class_file)
 
         for split, clip_len, dataset_len, is_eval, same_crop_transform in [
             ("train", 100, 50000, False, False),
@@ -330,7 +370,7 @@ if __name__ == "__main__":
             ("test", 200, 50000 // 4, True, True),
         ]:
             dataset = ActionSpotDataset(
-                classes=classes,
+                hierarchal_classes=hierarchal_classes,
                 label_file=base_dir.joinpath(
                     f"tools/{dataset_name}/{split}.json"),
                 clip_dir=clip_dir,
@@ -342,21 +382,25 @@ if __name__ == "__main__":
                 crop_dim=100 if split == "test" else 200
             )
 
-            loader = data.DataLoader(dataset, batch_size=4)
+            loader = data.DataLoader(dataset, batch_size=1)
 
             print(f"test {dataset_name}, {split}")
 
-            for i in loader:
-                print(i["contains_event"])
-                print(i["frame"].shape, i["frame"].size(1) == 100)
-                print(i["label"].shape, i["label"].size(1) == 100)
-                break
+            for example in loader:
+                if not (example["label"][0] == 0).all():
+                    print(example["contains_event"])
+                    print(example["level"])
+                    print(example["frame"].shape,
+                          example["frame"].size(1) == 100)
+                    for j in range(example["level"]):
+                        print(example["label"][j].shape,
+                              example["label"][j].size(1) == 100)
+                    break
 
             if split == "train":
                 continue
 
             map_dataset = ActionSpotmAPDataset(
-                classes=classes,
                 label_file=base_dir.joinpath(
                     f"tools/{dataset_name}/{split}.json"),
                 clip_len=clip_len,
@@ -365,11 +409,11 @@ if __name__ == "__main__":
                 overlap_len=10,
             )
 
-            map_loader = data.DataLoader(map_dataset, batch_size=4)
+            map_loader = data.DataLoader(map_dataset, batch_size=1)
 
             print(f"test {dataset_name}, {split}, mAPDataset")
-            for i in map_loader:
-                print(i["clip_name"])
-                print(i["start_frame"])
-                print(i["frame"].shape)
+            for example in map_loader:
+                print(example["clip_name"])
+                print(example["start_frame"])
+                print(example["frame"].shape)
                 break

@@ -1,0 +1,22 @@
+meta:
+  level: 2
+  transition: 1
+
+classes:
+  level1:
+    - Entry
+    - Som(s).Pike
+    - Som(s).Tuck
+    - Twist(s)
+
+  level2:
+    - Entry
+    - Som(s)
+    - Twist(s)
+
+transition:
+  transition1:
+    Entry: Entry
+    Som(s).Pike: Som(s)
+    Som(s).Tuck: Som(s)
+    Twist(s): Twist(s)

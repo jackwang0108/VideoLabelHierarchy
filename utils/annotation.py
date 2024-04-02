@@ -35,3 +35,10 @@ class Annotation(TypedDict):
     events: list[Event]
     # Source Information
     _source_info: SourceInfo
+
+
+class HierarchalClass(TypedDict):
+    num_level: int
+    num_trans: int
+    level_dict: dict[int, dict[str, int]]
+    trans_dict: dict[int, dict[str, str]]

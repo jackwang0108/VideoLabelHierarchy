@@ -1,0 +1,79 @@
+meta:
+  level: 2
+  transition: 1
+
+classes:
+  level1:
+    - BB_dismounts_end
+    - BB_dismounts_start
+    - BB_flight_handspring_end
+    - BB_flight_handspring_start
+    - BB_flight_salto_end
+    - BB_flight_salto_start
+    - BB_leap_jump_hop_end
+    - BB_leap_jump_hop_start
+    - BB_turns_end
+    - BB_turns_start
+    - FX_back_salto_end
+    - FX_back_salto_start
+    - FX_front_salto_end
+    - FX_front_salto_start
+    - FX_leap_jump_hop_end
+    - FX_leap_jump_hop_start
+    - FX_side_salto_end
+    - FX_side_salto_start
+    - FX_turns_end
+    - FX_turns_start
+    - UB_circles_end
+    - UB_circles_start
+    - UB_dismounts_end
+    - UB_dismounts_start
+    - UB_fligh_same_bar_end
+    - UB_fligh_same_bar_start
+    - UB_transition_flight_end
+    - UB_transition_flight_start
+    - VT_0
+    - VT_1
+    - VT_2
+    - VT_3
+
+  level2:
+    - BB
+    - FX
+    - UB
+    - VT
+
+transition:
+  transition1:
+    BB_dismounts_end: BB
+    BB_dismounts_start: BB
+    BB_flight_handspring_end: BB
+    BB_flight_handspring_start: BB
+    BB_flight_salto_end: BB
+    BB_flight_salto_start: BB
+    BB_leap_jump_hop_end: BB
+    BB_leap_jump_hop_start: BB
+    BB_turns_end: BB
+    BB_turns_start: BB
+    FX_back_salto_end: FX
+    FX_back_salto_start: FX
+    FX_front_salto_end: FX
+    FX_front_salto_start: FX
+    FX_leap_jump_hop_end: FX
+    FX_leap_jump_hop_start: FX
+    FX_side_salto_end: FX
+    FX_side_salto_start: FX
+    FX_turns_end: FX
+    FX_turns_start: FX
+    UB_circles_end: UB
+    UB_circles_start: UB
+    UB_dismounts_end: UB
+    UB_dismounts_start: UB
+    UB_fligh_same_bar_end: UB
+    UB_fligh_same_bar_start: UB
+    UB_transition_flight_end: UB
+    UB_transition_flight_start: UB
+    VT_0: VT
+    VT_1: VT
+    VT_2: VT
+    VT_3: VT
