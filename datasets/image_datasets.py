@@ -27,6 +27,7 @@ def get_classes(class_txt: Path) -> dict[str, int]:
 
 
 # TODO: E2E-Spot给的FineDiving的label有问题, 只给了细分的动作, 没有207c这样的动作, 所以后面得考虑一下怎么做
+# TODO: 目前是根据给定的label分成了入水, 转体, 屈体, 抱膝, 参考: https://www.diving-concepts.com/blank-5
 def get_hierarchal_classes(class_yaml: Path) -> HierarchalClass:
     content = load_yaml(class_yaml)
 
