@@ -16,7 +16,7 @@ from .frame import get_frame_reader
 
 from utils.color import error, red
 from utils.io import load_json, load_yaml
-from utils.annotation import Annotation, HierarchalClass
+from utils.annotation import Annotation, HierarchalClass, Example
 
 
 def get_classes(class_txt: Path) -> dict[str, int]:
@@ -182,7 +182,7 @@ class ActionSpotDataset(data.Dataset):
             clip_label, start_frame = self.sample_clip()
         return clip_label, start_frame
 
-    def get_example(self) -> dict[str, torch.FloatTensor | np.ndarray | int]:
+    def get_example(self) -> Example:
         clip_label, start_frame = self.get_sample()
 
         # build hierarchal labels
@@ -224,7 +224,16 @@ class ActionSpotDataset(data.Dataset):
 
         return {"frame": frames, "level": self.hierarchal_classes["num_level"], "label": labels, "contains_event": int(labels[0].sum() > 0)}
 
-    def __getitem__(self, unused):
+    def __getitem__(self, unused) -> Example:
+        """
+        Return: 
+            {
+                "frame": torch.FloatTensor, shape [Temporal, Channel, Height, Width],
+                "level": int, level of the labels of the example,
+                "label": list[torch.FloatTensor], labels of each level, each shape [Temporal]
+                "contains_event": bool, if contains event
+            }
+        """
         example = self.get_example()
         while example["frame"] is None:
             example = self.get_example()

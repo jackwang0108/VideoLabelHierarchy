@@ -1,6 +1,9 @@
 # Standard Library
 from typing import TypedDict
 
+# Torch Library
+import torch
+
 
 class Event(TypedDict):
     # The frame when the event starts
@@ -42,3 +45,10 @@ class HierarchalClass(TypedDict):
     num_trans: int
     level_dict: dict[int, dict[str, int]]
     trans_dict: dict[int, dict[str, str]]
+
+
+class Example(TypedDict):
+    frame: torch.FloatTensor
+    level: int
+    label: list[torch.FloatTensor]
+    contains_event: int
