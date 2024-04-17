@@ -243,8 +243,6 @@ def get_shift_module_builder(clip_len: int, n_div: int, is_gsm: bool = False, in
     """
     get the builder of temporal shift module
 
-
-
     Args:
         clip_len (int): length of the input clip, i.e., size of Temporal dim
         n_div (int): number of channel group to shift, for example, channel=64, n_div=4, 16 channels will be shifted as a result
