@@ -1,5 +1,6 @@
 # Standard Library
 import math
+from typing import Callable
 
 # Third-Party Library
 import timm
@@ -65,6 +66,10 @@ class TemporalShift(nn.Module):
         """
         warps the original module with TSM
 
+        when calling:
+            input shape: [Batch * Temporal, Channel(in), Height, Width]
+            output shape: [Batch * Temporal, Channel(out), Height, Width]
+
         Args:
             net (nn.Module): original module to warp
             clip_len (int): length of the input clip, i.e., size of Temporal dim
@@ -73,16 +78,16 @@ class TemporalShift(nn.Module):
         """
         super(TemporalShift, self).__init__()
         self.net = net
-        self.n_segment = clip_len
+        self.clip_len = clip_len
         self.fold_div = n_div
         self.inplace = inplace
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """
-        input shape: [Batch * Temporal, Channel, Height, Width]
-        output shape: [Batch * Temporal, Channel, Height, Width]
+        input shape: [Batch * Temporal, Channel(in), Height, Width]
+        output shape: [Batch * Temporal, Channel(out), Height, Width]
         """
-        x = self.shift(x, self.n_segment, fold_div=self.fold_div,
+        x = self.shift(x, self.clip_len, fold_div=self.fold_div,
                        inplace=self.inplace)
         return self.net(x)
 
@@ -108,31 +113,36 @@ class TemporalShift(nn.Module):
 
 
 class GatedShift(nn.Module):
-    """
-    GatedShift 就是对传入的net进行一个wrap, forward计算的时候先通过GSM模块, 然后再通过net. GSM模块就是Gate-Shift Networks for Video Action Recognition提出的一个3D卷积模块, 把相邻两帧的2D卷积信息加进来
-    """
+    """ Gated Shift Module (GSM) adapted from Gate-Shift Networks for Video Action Recognition, arxiv: https://arxiv.org/abs/1912.00381 """
 
     class _GSM(nn.Module):
-        """
-        Gate-Shift Networks for Video Action Recognition论文中提出的3D卷积模块
-        """
 
-        def __init__(self, fPlane, num_segments=3):
+        def __init__(self, in_channel: int, clip_len: int):
+            """
+            wrap the original module with GSM
+
+            Args:
+                in_channel (int): input channels
+                clip_len (int): length of the input clip, i.e., size of Temporal dim
+            """
             super(GatedShift._GSM, self).__init__()
 
-            self.conv3D = nn.Conv3d(fPlane, 2, (3, 3, 3), stride=1,
-                                    padding=(1, 1, 1), groups=2)
+            self.conv3D: Callable[[torch.FloatTensor], torch.FloatTensor] = \
+                nn.Conv3d(in_channel, 2, (3, 3, 3), stride=1,
+                          padding=(1, 1, 1), groups=2)
+
             nn.init.constant_(self.conv3D.weight, 0)
             nn.init.constant_(self.conv3D.bias, 0)
+
             self.tanh = nn.Tanh()
-            self.fPlane = fPlane
-            self.num_segments = num_segments
-            self.bn = nn.BatchNorm3d(num_features=fPlane)
+            self.in_channel = in_channel
+            self.clip_len = clip_len
+            self.bn = nn.BatchNorm3d(num_features=in_channel)
             self.relu = nn.ReLU()
 
         def lshift_zeroPad(self, x: torch.FloatTensor) -> torch.FloatTensor:
-            n, t, c, h, w = x.size()
-            temp = x.data.new(n, t, 1, h, w).fill_(0)
+            n, c, t, h, w = x.size()
+            temp = x.data.new(n, c, 1, h, w).fill_(0)
             # return torch.cat((x[:, :, 1:], ftens(x.size(0), x.size(1), 1, x.size(3), x.size(4)).fill_(0)), dim=2)
             return torch.cat((x[:, :, 1:], temp), dim=2)
 
@@ -143,94 +153,210 @@ class GatedShift(nn.Module):
             return torch.cat((temp, x[:, :, :-1]), dim=2)
 
         def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-            batchSize = x.size(0) // self.num_segments
-            shape = x.size(1), x.size(2), x.size(3)
-            assert shape[0] == self.fPlane
-            x = x.view(batchSize, self.num_segments, *
-                       shape).permute(0, 2, 1, 3, 4).contiguous()
+            """
+            input shape: [Batch * Temporal, Channel, Height, Width]
+            output shape: [Batch * Temporal, Channel, Height, Width]
+            """
+            nt, c, h, w = x.size()
+            n_batch = nt // self.clip_len
+            assert c == self.in_channel
+
+            # permute to [Batch, Channel, Temporal, Height, Width]
+            x = x.view(n_batch, self.clip_len, c, h, w).permute(
+                0, 2, 1, 3, 4).contiguous()
+
             x_bn = self.bn(x)
             x_bn_relu = self.relu(x_bn)
+
+            # shape: [Batch, 2, Temporal, Height, Width]
             gate = self.tanh(self.conv3D(x_bn_relu))
             gate_group1 = gate[:, 0].unsqueeze(1)
             gate_group2 = gate[:, 1].unsqueeze(1)
-            x_group1 = x[:, :self.fPlane // 2]
-            x_group2 = x[:, self.fPlane // 2:]
+
+            # split the input into two groups
+            y_group1: torch.FloatTensor
+            y_group2: torch.FloatTensor
+
+            x_group1 = x[:, :self.in_channel // 2]
+            # shape: [Batch, Channel, Temporal, Height, Width]
             y_group1 = gate_group1 * x_group1
-            y_group2 = gate_group2 * x_group2
-
             r_group1 = x_group1 - y_group1
-            r_group2 = x_group2 - y_group2
-
             y_group1 = self.lshift_zeroPad(y_group1) + r_group1
+            y_group1 = y_group1.view(n_batch, 2, self.in_channel // 4,
+                                     self.clip_len, h, w).permute(0, 2, 1, 3, 4, 5)
+
+            x_group2 = x[:, self.in_channel // 2:]
+            y_group2 = gate_group2 * x_group2
+            r_group2 = x_group2 - y_group2
             y_group2 = self.rshift_zeroPad(y_group2) + r_group2
+            y_group2 = y_group2.view(n_batch, 2, self.in_channel // 4,
+                                     self.clip_len, h, w).permute(0, 2, 1, 3, 4, 5)
 
-            y_group1 = y_group1.view(batchSize, 2, self.fPlane // 4,
-                                     self.num_segments, *shape[1:]).permute(0, 2, 1, 3, 4, 5)
-            y_group2 = y_group2.view(batchSize, 2, self.fPlane // 4,
-                                     self.num_segments, *shape[1:]).permute(0, 2, 1, 3, 4, 5)
+            y = torch.cat((y_group1.contiguous().view(n_batch, self.in_channel//2, self.clip_len, h, w),
+                           y_group2.contiguous().view(n_batch, self.in_channel//2, self.clip_len, h, w)), dim=1)
 
-            y = torch.cat((y_group1.contiguous().view(batchSize, self.fPlane//2, self.num_segments, *shape[1:]),
-                           y_group2.contiguous().view(batchSize, self.fPlane//2, self.num_segments, *shape[1:])), dim=1)
-
-            return y.permute(0, 2, 1, 3, 4).contiguous().view(batchSize*self.num_segments, *shape)
+            # permute back to [Batch * Temporal, Channel, Height, Width]
+            return y.permute(0, 2, 1, 3, 4).contiguous().view(n_batch * self.clip_len, c, h, w)
 
     def __init__(
         self,
         net: timm.layers.ConvNormAct | nn.Module,
-        n_segment: int,
+        channels: int,
+        clip_len: int,
         n_div: int
     ):
         """
-        为给定的神经网络模块添加一个门控移位模块。
+        wraps the original module with GSM
 
-        参数:
-            net (nn.Module): 神经网络模型。
-            n_segment (int): 视频片段的数量。
-            n_div (int): 分割数。
+        when calling:
+            input shape: [Batch * Temporal, Channel(in), Height, Width]
+            output shape: [Batch * Temporal, Channel(out), Height, Width]
 
-        属性:
-            fold_dim (int): 基于输入通道数的折叠维度。
-            gsm (_GSM): 门控移位模块。
-            net (nn.Module): 神经网络模型。
-            n_segment (int): 视频片段的数量。
+        Args:
+            net(nn.Module): original module to warp
+            clip_len (int): length of the input clip, i.e., size of Temporal dim
+            n_div (int): number of channel group to shift, for example, channel=64, n_div=4, 16 channels will be shifted as a result
 
-        方法:
-            forward(x): 执行门控移位模块的前向传播。
-
-        示例:
-            >>> gated_shift = GatedShift(net, n_segment=16, n_div=4)
-            >>> output = gated_shift(input)
+        Raises:
+            NotImplementedError: if the module to warp is not supported
         """
 
         super(GatedShift, self).__init__()
 
-        # 针对torchvision的ResNet中的模块进行处理
-        if isinstance(net, torchvision.models.resnet.BasicBlock):
-            channels = net.conv1.in_channels
-
-        # 针对torchvision的ConvNormActivation模块进行处理
-        elif isinstance(net, torchvision.ops.misc.ConvNormActivation):
-            channels = net[0].in_channels
-
-        # 针对timm的ConvBnAct模块进行处理
-        elif isinstance(net, timm.layers.conv_bn_act.ConvBnAct):
-            channels = net.conv.in_channels
-
-        # 针对Pytorch的Con2d模块进行处理
-        elif isinstance(net, nn.Conv2d):
-            channels = net.in_channels
-        else:
-            raise NotImplementedError(type(net))
-
-        self.fold_dim = math.ceil(channels // n_div / 4) * 4
-        # Gate-Shift Networks for Video Action Recognition中提出的模块, 本质就是一个3D卷积
-        self.gsm = GatedShift._GSM(self.fold_dim, n_segment)
         self.net = net
-        self.n_segment = n_segment
-        print(f'=> Using GSM, fold dim: {self.fold_dim} / {channels}')
+        self.in_channel = math.ceil(channels // n_div / 4) * 4
+        # Gated Shift Module
+        self.gsm = GatedShift._GSM(self.in_channel, clip_len)
 
-    def forward(self, x):
+    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
+        """
+        input shape: [Batch * Temporal, Channel(in), Height, Width]
+        output shape: [Batch * Temporal, Channel(out), Height, Width]
+        """
         y = torch.zeros_like(x)
-        y[:, :self.fold_dim, :, :] = self.gsm(x[:, :self.fold_dim, :, :])
-        y[:, self.fold_dim:, :, :] = x[:, self.fold_dim:, :, :]
+        y[:, :self.in_channel, :, :] = self.gsm(x[:, :self.in_channel, :, :])
+        y[:, self.in_channel:, :, :] = x[:, self.in_channel:, :, :]
         return self.net(y)
+
+
+def get_shift_module_builder(clip_len: int, n_div: int, is_gsm: bool = False, inplace_tsm: bool = False) -> Callable[[nn.Module], TemporalShift | GatedShift]:
+    """
+    get the builder of temporal shift module
+
+
+
+    Args:
+        clip_len (int): length of the input clip, i.e., size of Temporal dim
+        n_div (int): number of channel group to shift, for example, channel=64, n_div=4, 16 channels will be shifted as a result
+        is_gsm (bool, optional): build GSM or TSM. Defaults to False.
+        inplace_tsm (bool, optional): if use inplace TSM. Defaults to False.
+
+    Returns:
+        Callable[[nn.Module], TemporalShift | GatedShift]: shift module builder
+    """
+    def builder(net: nn.Module) -> TemporalShift | GatedShift:
+        # sourcery skip: lift-return-into-if, remove-unnecessary-else, swap-if-else-branches
+        if is_gsm:
+            # get in_channels, GSM split the channels of input into two groups
+            # so the in_channels need to be known
+            if isinstance(net, torchvision.models.resnet.BasicBlock):
+                channels = net.conv1.in_channels
+            elif isinstance(net, torchvision.ops.misc.ConvNormActivation):
+                channels = net[0].in_channels
+            elif isinstance(net, timm.layers.conv_bn_act.ConvBnAct):
+                channels = net.conv.in_channels
+            elif isinstance(net, nn.Conv2d):
+                channels = net.in_channels
+            else:
+                raise NotImplementedError(
+                    f"Cannot decide input channels of {type(net)=}")
+
+            shift_module = GatedShift(net, channels, clip_len, n_div)
+        else:
+            shift_module = TemporalShift(net, clip_len, n_div, inplace_tsm)
+
+        return shift_module
+
+    return builder
+
+
+def insert_temporal_shift(
+        backbone: torchvision.models.ResNet | timm.models.RegNet | timm.models.ConvNeXt,
+        shift_module_builder: Callable[[nn.Module], TemporalShift | GatedShift]
+) -> torchvision.models.ResNet | timm.models.RegNet | timm.models.ConvNeXt:
+    """ insert temporal shift module inside the backbone """
+
+    if isinstance(backbone, torchvision.models.ResNet):
+        # insert TSM/GSM every 1 block if using resnet18/32/50 else 2 for resnet101/152
+        n_round = 2 if len(list(backbone.layer3.children())) >= 23 else 1
+
+        def insert_before_blocks(stage: nn.Sequential) -> nn.Sequential:
+            blocks: list[torchvision.models.resnet.BasicBlock |
+                         torchvision.models.resnet.Bottleneck]
+            blocks = list(stage.children())
+
+            for i, block in enumerate(blocks):
+                if i % n_round == 0:
+                    blocks[i].conv1 = shift_module_builder(block.conv1)
+
+            return nn.Sequential(*blocks)
+
+        backbone.layer1 = insert_before_blocks(backbone.layer1)
+        backbone.layer2 = insert_before_blocks(backbone.layer2)
+        backbone.layer3 = insert_before_blocks(backbone.layer3)
+        backbone.layer4 = insert_before_blocks(backbone.layer4)
+
+    elif isinstance(backbone, timm.models.RegNet):
+        n_round = 1
+
+        def insert_before_blocks(stage: timm.models.regnet.RegStage) -> None:
+            blocks: list[timm.models.regnet.Bottleneck]
+            blocks = list(stage.children())
+
+            for i, block in enumerate(blocks):
+                if i % n_round == 0:
+                    blocks[i].conv1 = shift_module_builder(block.conv1)
+
+        insert_before_blocks(backbone.s1)
+        insert_before_blocks(backbone.s2)
+        insert_before_blocks(backbone.s3)
+        insert_before_blocks(backbone.s4)
+
+    elif isinstance(backbone, timm.models.ConvNeXt):
+        n_round = 1
+
+        def insert_before_blocks(stage: timm.models.convnext.ConvNeXtBlock) -> nn.Sequential:
+            blocks: list[timm.models.convnext.ConvNeXtBlock]
+            blocks = list(stage.blocks)
+
+            for i, block in enumerate(blocks):
+                if i % n_round == 0:
+                    blocks[i].conv_dw = shift_module_builder(block.conv_dw)
+
+            return nn.Sequential(*blocks)
+
+        insert_before_blocks(backbone.stages[0])
+        insert_before_blocks(backbone.stages[1])
+        insert_before_blocks(backbone.stages[2])
+        insert_before_blocks(backbone.stages[3])
+
+    else:
+        raise NotImplementedError(
+            f"insert_temporal_shift didn't support {type(backbone)=} yet")
+
+    return backbone
+
+
+if __name__ == "__main__":
+    from .backbone import get_backbone
+
+    for backbone in ["convnext_tiny", "convnext_large"]:
+        convnext: timm.models.ConvNeXt = get_backbone(
+            backbone=backbone, modality="rgb")
+
+        print(f"{backbone=}, {type(convnext.stages[0])}, {
+              len(list(convnext.stages[0].children()))=}")
+
+        blocks = list(convnext.stages[0].blocks)
+        for block in blocks:
+            print(f"{type(block)=}, {type(block.conv_dw)=}")
